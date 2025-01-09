@@ -5,22 +5,20 @@ import pandas as pd
 from typing import List, Dict, Any
 import time
 
+# Set page config at the very beginning before any other Streamlit commands
+st.set_page_config(
+    page_title="Vector Search",
+    page_icon="🔍",
+    layout="wide"
+)
+
 # Constants
 BACKEND_URL = "https://busy-kings-deny.loca.lt"  # Your local tunnel URL
 
 class VectorSearchUI:
     def __init__(self):
-        self.setup_page()
         self.initialize_session_state()
         self.check_backend_connection()
-
-    def setup_page(self):
-        st.set_page_config(
-            page_title="Vector Search Interface",
-            page_icon="🔍",
-            layout="wide"
-        )
-        st.title("Vector Search Interface")
 
     def check_backend_connection(self):
         try:
@@ -125,6 +123,7 @@ class VectorSearchUI:
                     st.sidebar.error(f"❌ Error: {str(e)}")
 
     def render_search_interface(self):
+        st.title("Vector Search Interface")
         st.subheader("Search")
         
         # Search input and button
@@ -205,8 +204,6 @@ class VectorSearchUI:
         self.render_results()
 
 def main():
-    st.set_page_config(page_title="Vector Search", layout="wide")
-    
     # Add CSS for better styling
     st.markdown("""
         <style>
