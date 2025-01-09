@@ -4,6 +4,8 @@ import json
 import pandas as pd
 from typing import List, Dict, Any
 import time
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 # Set page config at the very beginning
 st.set_page_config(
@@ -15,24 +17,60 @@ st.set_page_config(
 # Constants
 BACKEND_URL = "https://honest-wolves-act.loca.lt"  # Your local tunnel URL
 TIMEOUT = 10  # Timeout in seconds
+MAX_RETRIES = 10  # Maximum number of retries
+RETRY_BACKOFF = 1  # Initial backoff time in seconds
+
+class RetrySession:
+    @staticmethod
+    def get_session():
+        session = requests.Session()
+        retry_strategy = Retry(
+            total=MAX_RETRIES,
+            backoff_factor=RETRY_BACKOFF,
+            status_forcelist=[502],  # Only retry on 502 errors
+            allowed_methods=["HEAD", "GET", "POST", "PUT", "DELETE", "OPTIONS", "TRACE"]
+        )
+        adapter = HTTPAdapter(max_retries=retry_strategy)
+        session.mount("http://", adapter)
+        session.mount("https://", adapter)
+        return session
 
 class VectorSearchUI:
     def __init__(self):
+        self.session = RetrySession.get_session()
         self.initialize_session_state()
         self.check_backend_connection()
 
+    def make_request(self, method: str, endpoint: str, **kwargs):
+        """Make a request with automatic retry logic and proper error handling"""
+        url = f"{BACKEND_URL}{endpoint}"
+        try:
+            with st.spinner(f"Making request to {endpoint}... (Will retry up to {MAX_RETRIES} times if needed)"):
+                response = self.session.request(
+                    method=method,
+                    url=url,
+                    timeout=TIMEOUT,
+                    headers={"Connection": "close"},
+                    **kwargs
+                )
+                return response
+        except requests.exceptions.ConnectionError as e:
+            st.error(f"❌ Connection error after {MAX_RETRIES} retries: {str(e)}")
+            raise
+        except requests.exceptions.Timeout as e:
+            st.error(f"❌ Request timed out after {MAX_RETRIES} retries: {str(e)}")
+            raise
+        except Exception as e:
+            st.error(f"❌ Unexpected error: {str(e)}")
+            raise
+
     def check_backend_connection(self):
         try:
-            with st.spinner("Checking backend connection..."):
-                response = requests.get(
-                    f"{BACKEND_URL}/docs",
-                    timeout=TIMEOUT,
-                    headers={"Connection": "close"}
-                )
-                if response.status_code == 200:
-                    st.sidebar.success("✅ Backend connected")
-                else:
-                    st.sidebar.error(f"❌ Backend connection failed with status code: {response.status_code}")
+            response = self.make_request("GET", "/docs")
+            if response.status_code == 200:
+                st.sidebar.success("✅ Backend connected")
+            else:
+                st.sidebar.error(f"❌ Backend connection failed with status code: {response.status_code}")
         except Exception as e:
             st.sidebar.error(f"❌ Backend connection error: {str(e)}")
 
@@ -102,11 +140,10 @@ class VectorSearchUI:
             }
             
             try:
-                response = requests.post(
-                    f"{BACKEND_URL}/vector-search/configure",
-                    params=config_data,
-                    timeout=TIMEOUT,
-                    headers={"Connection": "close"}
+                response = self.make_request(
+                    "POST",
+                    "/vector-search/configure",
+                    params=config_data
                 )
                 if response.status_code == 200:
                     st.session_state.search_config = config_data
@@ -132,37 +169,34 @@ class VectorSearchUI:
             self.perform_search(query, keywords_list)
 
     def perform_search(self, query: str, keywords: List[str] = None):
-        with st.spinner("Searching..."):
-            try:
-                # Submit query
-                query_data = {"query": query, "keywords": keywords}
-                submit_response = requests.post(
-                    f"{BACKEND_URL}/query/submit",
-                    json=query_data,
-                    timeout=TIMEOUT,
-                    headers={"Connection": "close"}
-                )
-                
-                if submit_response.status_code != 200:
-                    st.error(f"❌ Failed to submit query: {submit_response.text}")
-                    return
+        try:
+            # Submit query
+            query_data = {"query": query, "keywords": keywords}
+            submit_response = self.make_request(
+                "POST",
+                "/query/submit",
+                json=query_data
+            )
+            
+            if submit_response.status_code != 200:
+                st.error(f"❌ Failed to submit query: {submit_response.text}")
+                return
 
-                # Retrieve results
-                retrieve_response = requests.post(
-                    f"{BACKEND_URL}/query/retrieve",
-                    timeout=TIMEOUT,
-                    headers={"Connection": "close"}
-                )
-                
-                if retrieve_response.status_code == 200:
-                    results = retrieve_response.json()
-                    st.session_state.search_results = results.get("results", [])
-                    st.success(f"✨ Found {len(st.session_state.search_results)} results")
-                else:
-                    st.error(f"❌ Failed to retrieve results: {retrieve_response.text}")
+            # Retrieve results
+            retrieve_response = self.make_request(
+                "POST",
+                "/query/retrieve"
+            )
+            
+            if retrieve_response.status_code == 200:
+                results = retrieve_response.json()
+                st.session_state.search_results = results.get("results", [])
+                st.success(f"✨ Found {len(st.session_state.search_results)} results")
+            else:
+                st.error(f"❌ Failed to retrieve results: {retrieve_response.text}")
 
-            except Exception as e:
-                st.error(f"❌ Error performing search: {str(e)}")
+        except Exception as e:
+            st.error(f"❌ Error performing search: {str(e)}")
 
     def render_results(self):
         if st.session_state.search_results:
