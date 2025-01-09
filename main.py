@@ -13,7 +13,7 @@ st.set_page_config(
 )
 
 # Constants
-BACKEND_URL = "https://busy-kings-deny.loca.lt"  # Your local tunnel URL
+BACKEND_URL = "https://slow-monkeys-add.loca.lt"  # Your local tunnel URL
 
 class VectorSearchUI:
     def __init__(self):
