@@ -13,7 +13,8 @@ st.set_page_config(
 )
 
 # Constants
-BACKEND_URL = "https://slow-monkeys-add.loca.lt"  # Your local tunnel URL
+BACKEND_URL = "https://busy-kings-deny.loca.lt"  # Your local tunnel URL
+TIMEOUT = 10  # Timeout in seconds
 
 class VectorSearchUI:
     def __init__(self):
@@ -22,15 +23,26 @@ class VectorSearchUI:
 
     def check_backend_connection(self):
         try:
-            # Try to connect to the backend
-            response = requests.get(f"{BACKEND_URL}/docs")
-            if response.status_code == 200:
-                st.sidebar.success("✅ Backend connected")
-            else:
-                st.sidebar.error("❌ Backend connection failed")
+            with st.spinner("Checking backend connection..."):
+                response = requests.get(
+                    f"{BACKEND_URL}/docs",
+                    timeout=TIMEOUT,
+                    headers={"Connection": "close"}  # Add this to prevent connection pooling issues
+                )
+                if response.status_code == 200:
+                    st.sidebar.success("✅ Backend connected")
+                else:
+                    st.sidebar.error(f"❌ Backend connection failed with status code: {response.status_code}")
+                    st.sidebar.info("Check if the backend API is responding correctly")
+        except requests.exceptions.Timeout:
+            st.sidebar.error("❌ Backend connection timed out")
+            st.sidebar.info("The server is taking too long to respond. Check if it's running properly.")
+        except requests.exceptions.ConnectionError:
+            st.sidebar.error("❌ Cannot connect to backend")
+            st.sidebar.info("Ensure the backend server is running and the URL is accessible")
         except Exception as e:
             st.sidebar.error(f"❌ Backend connection error: {str(e)}")
-            st.sidebar.info("Make sure the backend server is running and the URL is correct")
+            st.sidebar.info("Unexpected error occurred while connecting to the backend")
 
     def initialize_session_state(self):
         if 'search_results' not in st.session_state:
@@ -95,20 +107,22 @@ class VectorSearchUI:
 
         # Apply Configuration button
         if st.sidebar.button("Apply Configuration"):
-            with st.sidebar.spinner("Updating configuration..."):
-                config_data = {
-                    "doc_correlation": doc_correlation,
-                    "recall_number": recall_number,
-                    "retrieval_weight": retrieval_weight,
-                    "mixed_percentage": mixed_percentage if mixed_percentage is not None else 50,
-                    "rerank_enabled": rerank_enabled
-                }
-                
+            config_data = {
+                "doc_correlation": doc_correlation,
+                "recall_number": recall_number,
+                "retrieval_weight": retrieval_weight,
+                "mixed_percentage": mixed_percentage if mixed_percentage is not None else 50,
+                "rerank_enabled": rerank_enabled
+            }
+            
+            # Use the main area spinner instead of sidebar spinner
+            with st.spinner("Updating configuration..."):
                 try:
                     response = requests.post(
                         f"{BACKEND_URL}/vector-search/configure",
                         params=config_data,
-                        timeout=10  # Add timeout
+                        timeout=TIMEOUT,
+                        headers={"Connection": "close"}
                     )
                     if response.status_code == 200:
                         st.session_state.search_config = config_data
@@ -140,7 +154,8 @@ class VectorSearchUI:
                     response = requests.post(
                         f"{BACKEND_URL}/vector-search/retrieve",
                         params={"query": query},
-                        timeout=30  # Longer timeout for search
+                        timeout=30,  # Longer timeout for search
+                        headers={"Connection": "close"}
                     )
                     
                     if response.status_code == 200:
@@ -149,7 +164,8 @@ class VectorSearchUI:
                             with st.spinner("Reranking results..."):
                                 rerank_response = requests.post(
                                     f"{BACKEND_URL}/vector-search/rerank",
-                                    timeout=10
+                                    timeout=TIMEOUT,
+                                    headers={"Connection": "close"}
                                 )
                                 if rerank_response.status_code != 200:
                                     st.warning("⚠️ Reranking failed, showing original results.")
@@ -157,7 +173,8 @@ class VectorSearchUI:
                         # Get the results
                         results_response = requests.get(
                             f"{BACKEND_URL}/vector-search/results",
-                            timeout=10
+                            timeout=TIMEOUT,
+                            headers={"Connection": "close"}
                         )
                         if results_response.status_code == 200:
                             st.session_state.search_results = results_response.json()["results"]
