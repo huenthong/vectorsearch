@@ -16,7 +16,7 @@ st.set_page_config(
 )
 
 # Constants
-BACKEND_URL = "https://light-things-divide.loca.lt"  # Your local tunnel URL
+BACKEND_URL = "https://rude-doodles-drop.loca.lt"  # Your local tunnel URL
 TIMEOUT = 10  # Timeout in seconds
 MAX_RETRIES = 10  # Maximum number of retries for 502 errors
 
